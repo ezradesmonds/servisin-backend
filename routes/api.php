@@ -29,6 +29,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/notifications/{id}/read', [ServisinController::class, 'readNotification']);
     Route::post('/notifications/read-all', [ServisinController::class, 'readAllNotifications']);
     Route::post('/upload/image', [ServisinController::class, 'uploadImage']);
+    Route::get('/help-center/articles', [ServisinController::class, 'helpCenterArticles']);
 
     Route::middleware('role:customer')->group(function () {
         Route::get('/customer/home', [ServisinController::class, 'customerHome']);
@@ -61,6 +62,14 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::middleware('role:technician')->group(function () {
+        Route::get('/technician/dashboard', [ServisinController::class, 'technicianDashboard']);
+        Route::get('/technician/calendar', [ServisinController::class, 'technicianCalendar']);
+        Route::get('/technician/bank-accounts', [ServisinController::class, 'bankAccounts']);
+        Route::post('/technician/bank-accounts', [ServisinController::class, 'storeBankAccount']);
+        Route::delete('/technician/bank-accounts/{id}', [ServisinController::class, 'deleteBankAccount']);
+        Route::get('/technician/service-areas', [ServisinController::class, 'serviceAreas']);
+        Route::put('/technician/service-areas', [ServisinController::class, 'updateServiceAreas']);
+        Route::put('/technician/skills', [ServisinController::class, 'updateSkills']);
         Route::post('/technician/onboarding', [ServisinController::class, 'technicianOnboarding']);
         Route::get('/technician/profile', [ServisinController::class, 'profile']);
         Route::put('/technician/profile', [ServisinController::class, 'updateProfile']);
