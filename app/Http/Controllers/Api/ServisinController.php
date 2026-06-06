@@ -787,6 +787,91 @@ class ServisinController extends Controller
         return ServisinResource::collection(DB::table('admin_settings')->get());
     }
 
+    public function technicianDashboard(Request $request)
+    {
+        $userId = $request->user()->id;
+        return new ServisinResource([
+            'stats' => [
+                'today_earnings' => DB::table('bookings')->where('technician_id', $userId)->whereDate('scheduled_at', today())->where('status', 'completed')->sum('final_price') ?? 0,
+                'active_jobs' => DB::table('bookings')->where('technician_id', $userId)->whereIn('status', ['accepted', 'technician_on_the_way', 'arrived', 'in_progress'])->count(),
+                'completed_jobs' => DB::table('bookings')->where('technician_id', $userId)->where('status', 'completed')->count(),
+            ],
+            'recent_jobs' => DB::table('bookings')->where('technician_id', $userId)->latest()->limit(5)->get(),
+        ]);
+    }
+
+    public function technicianCalendar(Request $request)
+    {
+        $month = $request->query('month', now()->format('Y-m'));
+        $jobs = DB::table('bookings')
+            ->where('technician_id', $request->user()->id)
+            ->where('scheduled_at', 'like', $month . '%')
+            ->get();
+        return ServisinResource::collection($jobs);
+    }
+
+    public function bankAccounts(Request $request)
+    {
+        return ServisinResource::collection(DB::table('technician_bank_accounts')->where('technician_id', $request->user()->id)->get());
+    }
+
+    public function storeBankAccount(Request $request)
+    {
+        $data = $request->validate([
+            'bank_name' => ['required', 'string'],
+            'account_number' => ['required', 'string'],
+            'account_name' => ['required', 'string'],
+        ]);
+        $id = DB::table('technician_bank_accounts')->insertGetId(
+            $data + ['technician_id' => $request->user()->id, 'created_at' => now(), 'updated_at' => now()]
+        );
+        return new ServisinResource(DB::table('technician_bank_accounts')->find($id));
+    }
+
+    public function deleteBankAccount(Request $request, int $id)
+    {
+        DB::table('technician_bank_accounts')->where('id', $id)->where('technician_id', $request->user()->id)->delete();
+        return response()->json(['message' => 'Rekening berhasil dihapus.']);
+    }
+
+    public function serviceAreas(Request $request)
+    {
+        return new ServisinResource([
+            'radius_km' => DB::table('technician_profiles')->where('user_id', $request->user()->id)->value('service_radius_km'),
+        ]);
+    }
+
+    public function updateServiceAreas(Request $request)
+    {
+        $data = $request->validate(['service_radius_km' => ['required', 'integer', 'min:1']]);
+        DB::table('technician_profiles')->where('user_id', $request->user()->id)->update(['service_radius_km' => $data['service_radius_km'], 'updated_at' => now()]);
+        return response()->json(['message' => 'Area layanan diperbarui.']);
+    }
+
+    public function updateSkills(Request $request)
+    {
+        $data = $request->validate([
+            'skills' => ['required', 'array'],
+            'skills.*.service_category_id' => ['required', 'exists:service_categories,id'],
+            'skills.*.is_active' => ['boolean']
+        ]);
+        
+        $profileId = DB::table('technician_profiles')->where('user_id', $request->user()->id)->value('id');
+        
+        foreach ($data['skills'] as $skill) {
+            DB::table('technician_services')->updateOrInsert(
+                ['technician_profile_id' => $profileId, 'service_category_id' => $skill['service_category_id']],
+                ['is_active' => $skill['is_active'] ?? true, 'updated_at' => now()]
+            );
+        }
+        return response()->json(['message' => 'Spesialisasi diperbarui.']);
+    }
+
+    public function helpCenterArticles()
+    {
+        return ServisinResource::collection(DB::table('cms_pages')->where('status', 'published')->get());
+    }
+
     private function profileFor(User $user): ?object
     {
         return $user->role === 'technician'
