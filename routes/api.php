@@ -6,10 +6,12 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('/register', [ServisinController::class, 'register']);
 Route::post('/login', [ServisinController::class, 'login']);
-Route::post('/mock/send-otp', [ServisinController::class, 'mockOk']);
-Route::post('/mock/verify-otp', [ServisinController::class, 'mockOk']);
-Route::post('/forgot-password/mock', [ServisinController::class, 'mockOk']);
-Route::post('/reset-password/mock', [ServisinController::class, 'mockOk']);
+Route::post('/login/google', [ServisinController::class, 'loginGoogle']);
+Route::post('/mock/send-otp', [ServisinController::class, 'sendOtpMock']);
+Route::post('/mock/verify-otp', [ServisinController::class, 'verifyOtpMock']);
+Route::post('/forgot-password/mock', [ServisinController::class, 'forgotPasswordMock']);
+Route::post('/reset-password/mock', [ServisinController::class, 'resetPasswordMock']);
+Route::get('/cms-pages/{slug}', [ServisinController::class, 'cmsPage']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [ServisinController::class, 'logout']);
@@ -25,18 +27,32 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/chats/{roomId}/messages', [ServisinController::class, 'chatMessages']);
     Route::post('/chats/{roomId}/messages', [ServisinController::class, 'sendChat']);
     Route::post('/notifications/{id}/read', [ServisinController::class, 'readNotification']);
+    Route::post('/notifications/read-all', [ServisinController::class, 'readAllNotifications']);
+    Route::post('/upload/image', [ServisinController::class, 'uploadImage']);
 
     Route::middleware('role:customer')->group(function () {
         Route::get('/customer/home', [ServisinController::class, 'customerHome']);
         Route::get('/customer/profile', [ServisinController::class, 'profile']);
         Route::put('/customer/profile', [ServisinController::class, 'updateProfile']);
+        Route::post('/customer/change-password', [ServisinController::class, 'changePassword']);
+        Route::delete('/customer/account', [ServisinController::class, 'deleteAccount']);
         Route::get('/customer/addresses', [ServisinController::class, 'addresses']);
         Route::post('/customer/addresses', [ServisinController::class, 'storeAddress']);
+        Route::put('/customer/addresses/{id}', [ServisinController::class, 'updateAddress']);
+        Route::delete('/customer/addresses/{id}', [ServisinController::class, 'deleteAddress']);
         Route::post('/customer/partnership/validate', [ServisinController::class, 'validatePartnership']);
+        Route::post('/customer/promo/validate', [ServisinController::class, 'validatePromo']);
+        Route::get('/customer/subscriptions', [ServisinController::class, 'subscriptionPlans']);
+        Route::post('/customer/subscriptions/subscribe', [ServisinController::class, 'subscribe']);
+        Route::get('/customer/referral', [ServisinController::class, 'referral']);
+        Route::post('/customer/referral/claim', [ServisinController::class, 'claimReferral']);
+        Route::get('/customer/favorites', [ServisinController::class, 'favorites']);
+        Route::post('/customer/favorites/{technician_id}', fn ($technician_id, ServisinController $controller, \Illuminate\Http\Request $request) => $controller->toggleFavorite($request, (int) $technician_id));
+        Route::post('/customer/device-token', [ServisinController::class, 'storeDeviceToken']);
         Route::post('/bookings', [ServisinController::class, 'createBooking']);
         Route::get('/customer/bookings', [ServisinController::class, 'customerBookings']);
         Route::post('/bookings/{id}/cancel', [ServisinController::class, 'cancelBooking']);
-        Route::post('/bookings/{id}/reschedule', [ServisinController::class, 'mockOk']);
+        Route::post('/bookings/{id}/reschedule', [ServisinController::class, 'rescheduleBooking']);
         Route::post('/bookings/{id}/pay/mock', [ServisinController::class, 'payBooking']);
         Route::post('/bookings/{id}/review', [ServisinController::class, 'reviewBooking']);
         Route::post('/bookings/{id}/complaint', [ServisinController::class, 'complaintBooking']);
