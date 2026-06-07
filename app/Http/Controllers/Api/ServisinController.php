@@ -170,6 +170,74 @@ class ServisinController extends Controller
         ]);
     }
 
+    public function customerDiscover(Request $request)
+    {
+        $search = $request->string('search')->toString();
+
+        $query = DB::table('technician_profiles')
+            ->join('users', 'users.id', '=', 'technician_profiles.user_id')
+            ->select('technician_profiles.*', 'users.id', 'users.name', 'users.avatar')
+            ->where('technician_profiles.verification_status', 'approved');
+
+        if ($search) {
+            $query->where(function ($inner) use ($search) {
+                $inner->where('users.name', 'like', '%'.$search.'%')
+                    ->orWhere('technician_profiles.bio', 'like', '%'.$search.'%')
+                    ->orWhereExists(function ($exists) use ($search) {
+                        $exists->select(DB::raw(1))
+                            ->from('technician_services')
+                            ->join('service_categories', 'service_categories.id', '=', 'technician_services.service_category_id')
+                            ->whereColumn('technician_services.technician_profile_id', 'technician_profiles.id')
+                            ->where('service_categories.name', 'like', '%'.$search.'%');
+                    });
+            });
+        }
+
+        $technicians = $query->orderByDesc('rating_avg')->limit(20)->get()->map(function ($tech) {
+            return [
+                'id' => $tech->id,
+                'name' => $tech->name,
+                'distance_km' => round(rand(10, 50) / 10, 1),
+                'profile' => [
+                    'avatar_url' => $tech->avatar,
+                    'rating_avg' => $tech->rating_avg,
+                    'bio' => $tech->bio,
+                ]
+            ];
+        });
+
+        $recentBookings = DB::table('bookings')
+            ->where('customer_id', $request->user()->id)
+            ->latest()
+            ->limit(5)
+            ->get()
+            ->map(function ($booking) {
+                $technician = DB::table('users')->where('id', $booking->technician_id)->first();
+                $problemType = DB::table('service_problem_types')->where('id', $booking->service_problem_type_id ?? null)->first();
+                $category = $problemType ? DB::table('service_categories')->where('id', $problemType->service_category_id)->first() : null;
+                
+                return [
+                    'id' => $booking->id,
+                    'technician_id' => $booking->technician_id,
+                    'status' => $booking->status,
+                    'technician' => [
+                        'name' => $technician->name ?? 'Unknown',
+                        'profile' => [
+                            'avatar_url' => $technician->avatar ?? null,
+                        ],
+                    ],
+                    'service_category' => [
+                        'name' => $category->name ?? 'Service',
+                    ],
+                ];
+            });
+
+        return new ServisinResource([
+            'technicians' => $technicians,
+            'recent_bookings' => $recentBookings,
+        ]);
+    }
+
     public function profile(Request $request)
     {
         return new ServisinResource(['user' => $request->user(), 'profile' => $this->profileFor($request->user())]);
@@ -185,7 +253,7 @@ class ServisinController extends Controller
 
     public function addresses(Request $request)
     {
-        return ServisinResource::collection(DB::table('addresses')->where('user_id', $request->user()->id)->get());
+        return response()->json(['data' => DB::table('addresses')->where('user_id', $request->user()->id)->get()]);
     }
 
     public function storeAddress(Request $request)
@@ -264,7 +332,7 @@ class ServisinController extends Controller
     {
         $query = DB::table('technician_profiles')
             ->join('users', 'users.id', '=', 'technician_profiles.user_id')
-            ->select('users.id', 'users.name', 'users.avatar', 'technician_profiles.*')
+            ->select('technician_profiles.*', 'users.id', 'users.name', 'users.avatar')
             ->where('technician_profiles.verification_status', 'approved');
 
         if ($request->boolean('online')) {
@@ -294,7 +362,7 @@ class ServisinController extends Controller
         $profileId = DB::table('technician_profiles')->where('user_id', $id)->value('id');
 
         return new ServisinResource([
-            'technician' => DB::table('technician_profiles')->join('users', 'users.id', '=', 'technician_profiles.user_id')->where('users.id', $id)->select('users.id', 'users.name', 'users.email', 'users.phone', 'users.avatar', 'technician_profiles.*')->first(),
+            'technician' => DB::table('technician_profiles')->join('users', 'users.id', '=', 'technician_profiles.user_id')->where('users.id', $id)->select('technician_profiles.*', 'users.id', 'users.name', 'users.email', 'users.phone', 'users.avatar')->first(),
             'services' => DB::table('technician_services')->join('service_categories', 'service_categories.id', '=', 'technician_services.service_category_id')->where('technician_profile_id', $profileId)->select('technician_services.*', 'service_categories.name as category_name')->get(),
             'reviews' => DB::table('reviews')->where('technician_id', $id)->latest()->limit(10)->get(),
             'portfolio' => DB::table('technician_documents')->where('technician_profile_id', $profileId)->whereIn('type', ['portfolio', 'certificate'])->latest()->get(),
@@ -333,17 +401,18 @@ class ServisinController extends Controller
         $booking = $this->bookings->create($request->validated(), $request->user()->id);
         $this->notifications->send($request->user()->id, 'Booking dibuat', 'Booking '.$booking->booking_code.' menunggu konfirmasi teknisi.', 'booking');
 
-        return response()->json(new ServisinResource($booking), 201);
+        return response()->json(['data' => $booking], 201);
     }
 
     public function customerBookings(Request $request)
     {
-        return new ServisinResource(DB::table('bookings')->where('customer_id', $request->user()->id)->latest()->paginate(15));
+        $bookings = \App\Models\Booking::with(['serviceCategory', 'serviceProblemType', 'technician'])->where('customer_id', $request->user()->id)->latest()->get();
+        return response()->json(['data' => ['bookings' => $bookings]]);
     }
 
     public function bookingDetail(Request $request, int $id)
     {
-        $booking = DB::table('bookings')->find($id);
+        $booking = \App\Models\Booking::with(['serviceCategory', 'serviceProblemType', 'technician'])->find($id);
         $this->guardBookingAccess($request, $booking);
 
         return new ServisinResource([

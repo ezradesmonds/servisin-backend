@@ -33,6 +33,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::middleware('role:customer')->group(function () {
         Route::get('/customer/home', [ServisinController::class, 'customerHome']);
+        Route::get('/customer/discover', [ServisinController::class, 'customerDiscover']);
         Route::get('/customer/profile', [ServisinController::class, 'profile']);
         Route::put('/customer/profile', [ServisinController::class, 'updateProfile']);
         Route::post('/customer/change-password', [ServisinController::class, 'changePassword']);
