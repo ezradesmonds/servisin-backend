@@ -55,7 +55,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/customer/bookings', [ServisinController::class, 'customerBookings']);
         Route::post('/bookings/{id}/cancel', [ServisinController::class, 'cancelBooking']);
         Route::post('/bookings/{id}/reschedule', [ServisinController::class, 'rescheduleBooking']);
+        Route::post('/bookings/{id}/complete', [ServisinController::class, 'customerCompleteBooking']);
         Route::post('/bookings/{id}/pay/mock', [ServisinController::class, 'payBooking']);
+        Route::post('/bookings/{id}/pay-extra/mock', [ServisinController::class, 'payExtraCharge']);
         Route::post('/bookings/{id}/review', [ServisinController::class, 'reviewBooking']);
         Route::post('/bookings/{id}/complaint', [ServisinController::class, 'complaintBooking']);
         Route::post('/bookings/{id}/warranty-claim', [ServisinController::class, 'warrantyBooking']);
@@ -86,6 +88,7 @@ Route::middleware('auth:sanctum')->group(function () {
         }
         Route::get('/technician/wallet', [ServisinController::class, 'technicianWallet']);
         Route::post('/technician/payouts', [ServisinController::class, 'requestPayout']);
+        Route::get('/technician/notifications', [ServisinController::class, 'notifications']);
         Route::get('/technician/job-history', [ServisinController::class, 'technicianOrders']);
         Route::post('/technician/location/update', [ServisinController::class, 'mockOk']);
         Route::post('/technician/online-status', [ServisinController::class, 'mockOk']);

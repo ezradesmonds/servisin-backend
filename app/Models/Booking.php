@@ -11,4 +11,6 @@ class Booking extends Model
     public function serviceCategory() { return $this->belongsTo(ServiceCategory::class); }
     public function serviceProblemType() { return $this->belongsTo(ServiceProblemType::class); }
     public function technician() { return $this->belongsTo(User::class, 'technician_id'); }
+    public function customer() { return $this->belongsTo(User::class, 'customer_id'); }
+    public function address() { return $this->belongsTo(Address::class); }
 }

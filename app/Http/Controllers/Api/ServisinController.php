@@ -400,6 +400,9 @@ class ServisinController extends Controller
     {
         $booking = $this->bookings->create($request->validated(), $request->user()->id);
         $this->notifications->send($request->user()->id, 'Booking dibuat', 'Booking '.$booking->booking_code.' menunggu konfirmasi teknisi.', 'booking');
+        if ($booking->technician_id) {
+            $this->notifications->send($booking->technician_id, 'Pesanan Masuk', 'Anda mendapat pesanan baru '.$booking->booking_code.' dari pelanggan.', 'job');
+        }
 
         return response()->json(['data' => $booking], 201);
     }
@@ -412,7 +415,7 @@ class ServisinController extends Controller
 
     public function bookingDetail(Request $request, int $id)
     {
-        $booking = \App\Models\Booking::with(['serviceCategory', 'serviceProblemType', 'technician'])->find($id);
+        $booking = \App\Models\Booking::with(['serviceCategory', 'serviceProblemType', 'technician', 'customer', 'address'])->find($id);
         $this->guardBookingAccess($request, $booking);
 
         return new ServisinResource([
@@ -423,6 +426,14 @@ class ServisinController extends Controller
             'complaints' => DB::table('complaints')->where('booking_id', $id)->latest()->get(),
             'warranty_claims' => DB::table('warranty_claims')->where('booking_id', $id)->latest()->get(),
         ]);
+    }
+
+    public function customerCompleteBooking(Request $request, int $id)
+    {
+        $booking = DB::table('bookings')->find($id);
+        if ($booking->customer_id !== $request->user()->id) return response()->json(['message' => 'Unauthorized'], 403);
+        $this->bookings->transition($id, $request->user()->id, 'completed');
+        return response()->json(['message' => 'Order selesai.']);
     }
 
     public function cancelBooking(Request $request, int $id)
@@ -461,6 +472,20 @@ class ServisinController extends Controller
         $data = $request->validate(['method' => ['required', Rule::in(['transfer', 'qris', 'ewallet', 'cod'])]]);
 
         return new ServisinResource($this->payments->payMock($id, $request->user()->id, $data['method']));
+    }
+
+    public function payExtraCharge(Request $request, int $id)
+    {
+        $data = $request->validate(['method' => ['required', \Illuminate\Validation\Rule::in(['transfer', 'qris', 'ewallet', 'cod'])]]);
+        
+        $booking = DB::table('bookings')->find($id);
+        if (!$booking || $booking->customer_id !== $request->user()->id) {
+            return response()->json(['message' => 'Booking tidak ditemukan.'], 404);
+        }
+
+        DB::table('bookings')->where('id', $id)->update(['is_extra_charge_paid' => true, 'updated_at' => now()]);
+
+        return response()->json(['message' => 'Extra charge berhasil dibayar.', 'status' => 'paid']);
     }
 
     public function reviewBooking(Request $request, int $id)
@@ -706,7 +731,8 @@ class ServisinController extends Controller
 
     public function technicianOrders(Request $request)
     {
-        return ServisinResource::collection(DB::table('bookings')->where('technician_id', $request->user()->id)->latest()->get());
+        $bookings = \App\Models\Booking::with(['customer', 'address', 'serviceCategory', 'serviceProblemType'])->where('technician_id', $request->user()->id)->latest()->get();
+        return ServisinResource::collection($bookings);
     }
 
     public function technicianOrderAction(Request $request, int $id, string $action)
@@ -718,8 +744,21 @@ class ServisinController extends Controller
         $data = $request->validate(['final_price' => ['nullable', 'numeric']]);
         $booking = DB::table('bookings')->find($id);
 
-        if ($booking->technician_id !== $request->user()->id) {
+        if ($booking->technician_id !== null && $booking->technician_id !== $request->user()->id) {
             return response()->json(['message' => 'Order ini bukan milik teknisi yang login.'], 403);
+        }
+
+        if ($booking->technician_id === null && $action === 'accept') {
+            DB::table('bookings')->where('id', $id)->update(['technician_id' => $request->user()->id]);
+        }
+
+        if ($action === 'add-extra-charge') {
+            $extraData = $request->validate(['extra_charge' => ['required', 'numeric']]);
+            DB::table('bookings')->where('id', $id)->update([
+                'extra_charge' => $extraData['extra_charge'],
+                'is_extra_charge_paid' => false
+            ]);
+            return response()->json(['message' => 'Extra charge ditambahkan.', 'status' => $booking->status]);
         }
 
         $this->bookings->transition($id, $request->user()->id, $map[$action], $data['final_price'] ?? null);
@@ -865,7 +904,13 @@ class ServisinController extends Controller
                 'active_jobs' => DB::table('bookings')->where('technician_id', $userId)->whereIn('status', ['accepted', 'technician_on_the_way', 'arrived', 'in_progress'])->count(),
                 'completed_jobs' => DB::table('bookings')->where('technician_id', $userId)->where('status', 'completed')->count(),
             ],
-            'recent_jobs' => DB::table('bookings')->where('technician_id', $userId)->latest()->limit(5)->get(),
+            'available_jobs' => \App\Models\Booking::with(['customer', 'serviceCategory', 'serviceProblemType', 'address'])
+                ->where(function($query) use ($userId) {
+                    $query->whereNull('technician_id')->orWhere('technician_id', $userId);
+                })
+                ->whereIn('status', ['pending', 'paid'])
+                ->latest()->get(),
+            'recent_jobs' => \App\Models\Booking::with(['customer', 'serviceCategory', 'serviceProblemType', 'address'])->where('technician_id', $userId)->whereNotIn('status', ['pending', 'paid'])->latest()->limit(5)->get(),
         ]);
     }
 
@@ -874,6 +919,7 @@ class ServisinController extends Controller
         $month = $request->query('month', now()->format('Y-m'));
         $jobs = DB::table('bookings')
             ->where('technician_id', $request->user()->id)
+            ->where('status', '!=', 'pending')
             ->where('scheduled_at', 'like', $month . '%')
             ->get();
         return ServisinResource::collection($jobs);
@@ -1010,3 +1056,5 @@ class ServisinController extends Controller
         return $table;
     }
 }
+
+
